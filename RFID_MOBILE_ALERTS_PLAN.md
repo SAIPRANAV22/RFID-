@@ -399,29 +399,31 @@ FCM is Google's free push notification service. It works reliably on Android.
   - Icon: Green checkmark
   - Action: Tap to view access history
 
-#### 2. **Unauthorized Access (High Priority)**
-- **Priority:** High
-- **Sound:** Loud, urgent alarm sound
-- **Vibration:** Strong vibration pattern
+#### 2. **Unauthorized Access (MAXIMUM PRIORITY - ALARM)**
+- **Priority:** MAXIMUM (not just high)
+- **Sound:** **LOUD ALARM SIREN** - This is a security alarm, not a notification
+- **Volume:** Maximum device volume
+- **Duration:** Repeats for 10-15 seconds or until dismissed
+- **Vibration:** Strong, rapid vibration pattern
+- **Display:** Full-screen red warning (wakes phone from sleep)
+- **Cannot be silenced:** Bypasses Do Not Disturb mode
 - **Content:**
   - Title: "⚠️ UNAUTHORIZED ACCESS"
   - Body: "Unknown card tried to enter at 2:30 PM"
   - Icon: Red warning triangle
-  - Action: Tap to view details
-  - Additional: Optional SMS/email alert (future feature)
+  - Action: User must manually dismiss alarm
+  - Repeat: Alarm repeats every 30 seconds for 5 minutes if not dismissed
+- **Category:** Android notification category "alarm"
 
 ### Android App Notification Handling:
 
 #### Foreground (App is open):
-- Show an in-app banner at the top of the screen
-- Update the access history list automatically
-- Play sound if unauthorized access
-- Vibrate phone if unauthorized access
+- **Authorized access:** Show friendly in-app banner, update history list
+- **Unauthorized access:** **PLAY LOUD ALARM IMMEDIATELY**, show full-screen red warning, vibrate strongly
 
 #### Background (App is closed or minimized):
-- Show system notification in notification tray
-- Tap notification opens the app to access history
-- Sound and vibration based on priority
+- **Authorized access:** Show normal system notification, tap to open app
+- **Unauthorized access:** **LOUD ALARM SOUND**, full-screen notification that wakes phone, strong vibration, notification cannot be swiped away
 
 #### Implementation Steps:
 1. Add Firebase Messaging dependency to Android app
@@ -477,6 +479,67 @@ const message = {
 
 ## 9. Authorized vs. Unauthorized Access Handling
 
+### ⚠️ CRITICAL FEATURE: DENIED ACCESS ALARM
+
+**This is the most important feature of the entire system.**
+
+When an unauthorized RFID card is scanned, the Android phone MUST play a **LOUD ALARM SOUND**. This is NOT a silent notification. It is an urgent security alert designed to get immediate attention.
+
+**Denied Access Alarm Requirements:**
+- **Sound:** Loud, high-priority alarm or siren sound (similar to a car alarm or security system)
+- **Volume:** Maximum volume possible on the Android device
+- **Duration:** Alarm should repeat for at least 10-15 seconds or until user dismisses it
+- **Cannot be silenced:** Bypasses Do Not Disturb mode in most cases
+- **Vibration:** Strong, rapid vibration pattern accompanying the sound
+- **Visual:** Full-screen red warning notification with flashing effect if possible
+- **Repeat:** If user doesn't dismiss, alarm should repeat every 30 seconds for 5 minutes
+- **Wake screen:** Alarm should wake the phone from sleep mode
+
+**How It Works:**
+1. Unauthorized card scanned at door
+2. Door stays locked (physical security)
+3. Cloud Function sends HIGH PRIORITY FCM message with type="unauthorized"
+4. Android app receives FCM message
+5. Android app plays LOUD ALARM SOUND immediately
+6. Android app shows full-screen red warning
+7. Android app vibrates strongly
+8. User must manually dismiss the alarm
+
+**Alarm Sound Implementation:**
+- Use a custom alarm sound file (e.g., `alarm_siren.mp3`) stored in app resources
+- Set notification priority to "high" or "max"
+- Use Android's AudioAttributes to ensure full volume
+- Set notification category to "alarm" (bypasses Do Not Disturb)
+- Use full-screen intent for maximum visibility
+
+**Code Example (Kotlin):**
+```kotlin
+private fun showUnauthorizedAlarm() {
+    val alarmSound = Uri.parse("android.resource://${context.packageName}/${R.raw.alarm_siren}")
+
+    val notification = NotificationCompat.Builder(context, ALARM_CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_warning)
+        .setContentTitle("⚠️ UNAUTHORIZED ACCESS")
+        .setContentBody("Unknown card tried to enter at ${getCurrentTime()}")
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setCategory(NotificationCompat.CATEGORY_ALARM)
+        .setSound(alarmSound, AudioAttributes.USAGE_ALARM)
+        .setVibrate(longArrayOf(0, 500, 200, 500, 200, 500))
+        .setOngoing(true) // Cannot be swiped away
+        .setFullScreenIntent(fullScreenPendingIntent, true) // Wake screen
+        .build()
+
+    notificationManager.notify(UNAUTHORIZED_ID, notification)
+}
+```
+
+**Authorized Access (No Alarm):**
+- **Sound:** Gentle notification chime (optional, can be disabled)
+- **Priority:** Normal
+- **Visual:** Small notification card, not full-screen
+- **User experience:** Friendly, informational
+- **Can be silenced:** Respects Do Not Disturb mode
+
 ### Authorized Access Flow:
 
 1. **Card Scan:** User scans authorized card
@@ -488,8 +551,9 @@ const message = {
 7. **Android App Shows:**
    - Green notification with friendly message
    - "Door Unlocked - John Doe entered at 2:30 PM"
-   - Normal notification sound
+   - Gentle notification sound (or silent)
    - Update to access history list
+   - **NO ALARM - Normal informational notification only**
 
 ### Unauthorized Access Flow:
 
@@ -500,34 +564,42 @@ const message = {
 5. **Cloud Logging:** Send to Firestore (if internet available)
 6. **Notification:** Send HIGH PRIORITY FCM to Android phones
 7. **Android App Shows:**
-   - Red warning notification
+   - **LOUD ALARM SOUND PLAYS IMMEDIATELY**
+   - Full-screen red warning notification
    - "⚠️ UNAUTHORIZED ACCESS - Unknown card at 2:30 PM"
-   - Loud alarm sound
    - Strong vibration pattern
+   - Phone wakes from sleep
    - Update to access history list with red highlight
+   - Alarm repeats until dismissed
 8. **Optional:** The app could also:
    - Send an SMS to the owner
    - Send an email alert
-   - Play a siren sound if app is open
+   - Continue playing alarm until acknowledged
 
 ### Visual Feedback:
 
 **Authorized:**
 - Notification color: Green
 - Icon: Checkmark or unlocked padlock
-- Sound: Gentle chime
-- Vibration: Single short pulse
+- Sound: Gentle chime (or silent)
+- Vibration: Single short pulse (or none)
+- Display: Small notification card
+- **NO ALARM**
 
 **Unauthorized:**
 - Notification color: Red
 - Icon: Warning triangle or locked padlock
-- Sound: Loud alarm or siren
+- **Sound: LOUD ALARM OR SIREN (maximum volume)**
 - Vibration: Long, repeated pattern
-- Action: Could enable "panic mode" in app
+- Display: Full-screen warning
+- **THIS IS AN ALARM, NOT A NOTIFICATION**
 
 ### Priority Levels:
 - **Authorized:** Normal priority (won't wake phone if in Do Not Disturb)
-- **Unauthorized:** High priority (bypasses Do Not Disturb in some cases)
+- **Unauthorized:** **MAXIMUM PRIORITY** (bypasses Do Not Disturb, wakes phone, full-screen)
+
+### Important Note:
+The physical door lock works locally regardless of internet or phone connectivity. Even if the phone is offline or the alarm fails to play, the door will still stay locked for unauthorized cards. The alarm is an additional alert, not the primary security mechanism.
 
 ---
 
